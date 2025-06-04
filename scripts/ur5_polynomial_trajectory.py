@@ -18,7 +18,7 @@ def compute_quintic_coefficients(q0, qf, v0, vf, T):
 def generate_continuous_trajectory(waypoints, waypoint_times, dt):
     trajectory = []
     num_joints = len(waypoints[0])
-    cumulative_time = 0  # To ensure strictly increasing time_from_start
+    cumulative_time = waypoint_times[0]  # Start time (usually 0)
 
     # Set initial velocities for the first waypoint
     v0 = [0.0] * num_joints  # Initial velocity at the start
@@ -26,7 +26,8 @@ def generate_continuous_trajectory(waypoints, waypoint_times, dt):
         q0 = waypoints[i]
         qf = waypoints[i + 1]
         T = waypoint_times[i + 1] - waypoint_times[i]
-        time_steps = np.arange(0, T + dt, dt)
+        # Exclude the final time to avoid duplicating points at segment boundaries
+        time_steps = np.arange(0, T, dt)
 
         # For the last waypoint, set final velocity to zero
         if i == len(waypoints) - 2:
@@ -47,7 +48,7 @@ def generate_continuous_trajectory(waypoints, waypoint_times, dt):
                 v0[j] = v_est  # Update initial velocity for next segment
             coefficients.append(coeff)
 
-        # Generate trajectory points
+        # Generate trajectory points for this segment
         for t in time_steps:
             positions, velocities, accelerations = [], [], []
             for j in range(num_joints):
@@ -66,9 +67,20 @@ def generate_continuous_trajectory(waypoints, waypoint_times, dt):
             point.positions = positions
             point.velocities = velocities
             point.accelerations = accelerations
-            cumulative_time += dt  # Accumulate time for each point
-            point.time_from_start = rospy.Duration.from_sec(cumulative_time)
+            point.time_from_start = rospy.Duration.from_sec(cumulative_time + t)
             trajectory.append(point)
+
+        # Update the cumulative time at the end of the segment
+        cumulative_time += T
+
+    # Append the final waypoint to ensure the trajectory ends exactly at the
+    # last specified time
+    final_point = JointTrajectoryPoint()
+    final_point.positions = waypoints[-1]
+    final_point.velocities = [0.0] * num_joints
+    final_point.accelerations = [0.0] * num_joints
+    final_point.time_from_start = rospy.Duration.from_sec(waypoint_times[-1])
+    trajectory.append(final_point)
 
     return trajectory
 
